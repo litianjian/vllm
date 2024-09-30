@@ -805,9 +805,17 @@ class LlavaOnevisionForConditionalGeneration(nn.Module, SupportsMultiModal,
                 stacked_embeddings.append(embeddings)
             return stacked_embeddings
         elif is_list_of(video_pixels, torch.Tensor):
-            stacked_pixels = torch.cat(video_pixels, dim=0).unsqueeze(0)
-            stacked_embeddings = self._video_pixels_to_features(
-                self.vision_tower, stacked_pixels)
+            stacked_embeddings = []
+            for video_pixel in video_pixels:
+                num_videos, frames, c, h, w = video_pixel.shape
+                pixel_values = video_pixel.view(num_videos * frames, c, h, w)
+                embeddings = self._video_pixels_to_features(
+                    self.vision_tower, pixel_values)
+                embeddings = self._add_image_newline(embeddings,
+                                                     videos=num_videos,
+                                                     frames=frames,
+                                                     strategy="one_token")
+                stacked_embeddings.append(embeddings)
             return stacked_embeddings
         else:
             raise ValueError(
