@@ -138,6 +138,8 @@ class MultiModalDataBuiltins(TypedDict, total=False):
     audio: MultiModalData[Tuple[np.ndarray, Union[int, float]]]
     """The input audio item(s) and corresponding sampling rate(s)."""
 
+    video: MultiModalData[np.ndarray]
+
 
 MultiModalDataDict = Union[MultiModalDataBuiltins,
                            Mapping[str, MultiModalData[object]]]

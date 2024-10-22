@@ -31,7 +31,9 @@ from vllm.logger import init_logger
 from vllm.multimodal import MultiModalDataDict
 from vllm.multimodal.utils import (async_get_and_parse_audio,
                                    async_get_and_parse_image,
-                                   get_and_parse_audio, get_and_parse_image)
+                                   async_get_and_parse_video,
+                                   get_and_parse_audio, get_and_parse_image,
+                                   get_and_parse_video)
 from vllm.transformers_utils.tokenizer import AnyTokenizer, MistralTokenizer
 from vllm.utils import print_warning_once
 
@@ -203,7 +205,10 @@ class BaseMultiModalItemTracker(ABC, Generic[_T]):
         elif modality == "video":
             if model_type == "qwen2_vl":
                 return "<|vision_start|><|video_pad|><|vision_end|>"
-            raise TypeError(f"Unknown {modality} model type: {model_type}")
+            if model_type.startswith("llava"):
+                return self._cached_token_str(self._tokenizer,
+                                              hf_config.video_token_index)
+            raise TypeError(f"Unknown model type: {model_type}")
         else:
             raise TypeError(f"Unknown modality: {modality}")
 
@@ -293,6 +298,10 @@ class BaseMultiModalContentParser(ABC):
     def parse_audio(self, audio_url: str) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def parse_video(self, video_url: str, num_frames) -> None:
+        raise NotImplementedError
+
 
 class MultiModalContentParser(BaseMultiModalContentParser):
 
@@ -313,6 +322,12 @@ class MultiModalContentParser(BaseMultiModalContentParser):
         placeholder = self._tracker.add("audio", audio)
         self._add_placeholder(placeholder)
 
+    def parse_video(self, video_url: str, num_frames) -> None:
+        video = get_and_parse_video(video_url, num_frames=num_frames)
+
+        placeholder = self._tracker.add("video", video)
+        self._add_placeholder(placeholder)
+
 
 class AsyncMultiModalContentParser(BaseMultiModalContentParser):
 
@@ -331,6 +346,12 @@ class AsyncMultiModalContentParser(BaseMultiModalContentParser):
         audio_coro = async_get_and_parse_audio(audio_url)
 
         placeholder = self._tracker.add("audio", audio_coro)
+        self._add_placeholder(placeholder)
+
+    def parse_video(self, video_url: str, num_frames: int = 8) -> None:
+        video_coro = async_get_and_parse_video(video_url, num_frames)
+
+        placeholder = self._tracker.add("video", video_coro)
         self._add_placeholder(placeholder)
 
 
@@ -480,6 +501,28 @@ def _parse_chat_message_content_mm_part(
 
 VALID_MESSAGE_CONTENT_MM_PART_TYPES = ("text", "refusal", "image_url",
                                        "audio_url")
+
+
+class VideoURL(TypedDict, total=False):
+    url: Required[str]
+    """Either a URL of the image or the base64 encoded image data."""
+
+    num_frames: Optional[int]
+    """Specifies the detail level of the image.
+
+    Learn more in the
+    [Vision guide](https://platform.openai.com/docs/guides/vision/low-or-high-fidelity-image-understanding).
+    """
+
+
+class ChatCompletionContentPartVideoParam(TypedDict, total=False):
+    video_url: Required[VideoURL]
+
+    type: Required[Literal["video_url"]]
+    """The type of the content part."""
+
+
+_VideoParser = partial(cast, ChatCompletionContentPartVideoParam)
 
 
 def _parse_chat_message_content_parts(
