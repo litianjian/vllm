@@ -24,6 +24,25 @@ def _load_image_from_bytes(b: bytes):
     return image
 
 
+def _load_video_from_bytes(b: bytes, num_frames: int = 8):
+    video_path = BytesIO(b)
+    from decord import VideoReader
+
+    vr = VideoReader(video_path, num_threads=1)
+    total_frame_num = len(vr)
+    avg_fps = round(vr.get_avg_fps())
+    frame_idx = [i for i in range(0, total_frame_num, avg_fps)]  # FPS Sampling
+    if len(frame_idx) > num_frames:
+        uniform_sampled_frames = np.linspace(0,
+                                             total_frame_num - 1,
+                                             num_frames,
+                                             dtype=int)
+        frame_idx = uniform_sampled_frames.tolist()
+    frames = vr.get_batch(frame_idx).asnumpy()
+
+    return frames
+
+
 def _load_image_from_data_url(image_url: str):
     # Only split once and assume the second part is the base64 encoded image
     _, image_base64 = image_url.split(",", 1)
@@ -50,6 +69,22 @@ def fetch_image(image_url: str, *, image_mode: str = "RGB") -> Image.Image:
     return image.convert(image_mode)
 
 
+def fetch_video(video_url: str, *, num_frames: int = 8):
+    """
+    Asynchronously load a PIL image from a HTTP or base64 data URL.
+
+    By default, the image is converted into RGB format.
+    """
+    if video_url.startswith('http') or video_url.startswith('https'):
+        video_raw = global_http_connection.get_bytes(
+            video_url, timeout=VLLM_IMAGE_FETCH_TIMEOUT)
+        video = _load_video_from_bytes(video_raw, num_frames=8)
+    else:
+        raise ValueError("Invalid 'video_url': A valid 'video_url' must start "
+                         "with either 'data:audio' or 'http'.")
+    return video
+
+
 async def async_fetch_image(image_url: str,
                             *,
                             image_mode: str = "RGB") -> Image.Image:
@@ -70,6 +105,22 @@ async def async_fetch_image(image_url: str,
                          "with either 'data:image' or 'http'.")
 
     return image.convert(image_mode)
+
+
+async def async_fetch_video(video_url: str, *, num_frames: int = 8):
+    """
+    Asynchronously load a PIL image from a HTTP or base64 data URL.
+
+    By default, the image is converted into RGB format.
+    """
+    if video_url.startswith('http') or video_url.startswith('https'):
+        video_raw = await global_http_connection.async_get_bytes(
+            video_url, timeout=VLLM_IMAGE_FETCH_TIMEOUT)
+        video = _load_video_from_bytes(video_raw, num_frames=8)
+    else:
+        raise ValueError("Invalid 'video_url': A valid 'video_url' must start "
+                         "with either 'data:audio' or 'http'.")
+    return video
 
 
 def try_import_audio_packages() -> Tuple[Any, Any]:
@@ -131,6 +182,12 @@ def get_and_parse_image(image_url: str) -> MultiModalDataDict:
     return {"image": image}
 
 
+def get_and_parse_video(video_url: str,
+                        num_frames: int = 8) -> MultiModalDataDict:
+    video = fetch_video(video_url, num_frames=num_frames)
+    return {"video": video}
+
+
 async def async_get_and_parse_audio(audio_url: str) -> MultiModalDataDict:
     audio, sr = await async_fetch_audio(audio_url)
     return {"audio": (audio, sr)}
@@ -139,6 +196,12 @@ async def async_get_and_parse_audio(audio_url: str) -> MultiModalDataDict:
 async def async_get_and_parse_image(image_url: str) -> MultiModalDataDict:
     image = await async_fetch_image(image_url)
     return {"image": image}
+
+
+async def async_get_and_parse_video(video_url: str,
+                                    num_frames: int = 8) -> MultiModalDataDict:
+    video = await async_fetch_video(video_url, num_frames=num_frames)
+    return {"video": video}
 
 
 def encode_audio_base64(
