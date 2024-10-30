@@ -24,6 +24,11 @@ def _load_image_from_bytes(b: bytes):
     return image
 
 
+def _load_frame_from_bytes(b: bytes):
+    frame = Image.open(BytesIO(b))
+    return np.array(frame)
+
+
 def _load_video_from_bytes(b: bytes, num_frames: int = 8):
     video_path = BytesIO(b)
     from decord import VideoReader
@@ -42,10 +47,19 @@ def _load_video_from_bytes(b: bytes, num_frames: int = 8):
 
     return frames
 
+
 def _load_video_from_data_url(video_url: str):
     # Only split once and assume the second part is the base64 encoded image
     frames_base64 = video_url.split(",")[1:]
-    return [load_image_from_base64(frame_base64) for frame_base64 in frames_base64]
+    return np.stack([
+        load_frame_from_base64(frame_base64) for frame_base64 in frames_base64
+    ])
+
+
+def load_frame_from_base64(frame: Union[bytes, str]) -> Image.Image:
+    """Load frame from base64 format."""
+    return _load_frame_from_bytes(base64.b64decode(frame))
+
 
 def _load_image_from_data_url(image_url: str):
     # Only split once and assume the second part is the base64 encoded image
@@ -73,7 +87,7 @@ def fetch_image(image_url: str, *, image_mode: str = "RGB") -> Image.Image:
     return image.convert(image_mode)
 
 
-def fetch_video(video_url: str, *, num_frames: int = 8):
+def fetch_video(video_url: str, *, num_frames: int = 16):
     """
     Asynchronously load a video from a HTTP or base64 data URL.
 
@@ -113,7 +127,7 @@ async def async_fetch_image(image_url: str,
     return image.convert(image_mode)
 
 
-async def async_fetch_video(video_url: str, *, num_frames: int = 8):
+async def async_fetch_video(video_url: str, *, num_frames: int = 16):
     """
     Asynchronously load a PIL image from a HTTP or base64 data URL.
 
@@ -190,9 +204,8 @@ def get_and_parse_image(image_url: str) -> MultiModalDataDict:
     return {"image": image}
 
 
-def get_and_parse_video(video_url: str,
-                        num_frames: int = 8) -> MultiModalDataDict:
-    video = fetch_video(video_url, num_frames=num_frames)
+def get_and_parse_video(video_url: str) -> MultiModalDataDict:
+    video = fetch_video(video_url)
     return {"video": video}
 
 
@@ -206,9 +219,8 @@ async def async_get_and_parse_image(image_url: str) -> MultiModalDataDict:
     return {"image": image}
 
 
-async def async_get_and_parse_video(video_url: str,
-                                    num_frames: int = 8) -> MultiModalDataDict:
-    video = await async_fetch_video(video_url, num_frames=num_frames)
+async def async_get_and_parse_video(video_url: str) -> MultiModalDataDict:
+    video = await async_fetch_video(video_url)
     return {"video": video}
 
 

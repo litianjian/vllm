@@ -84,6 +84,17 @@ class CustomChatCompletionContentSimpleAudioParam(TypedDict, total=False):
     audio_url: Required[str]
 
 
+class CustomChatCompletionContentSimpleVideoParam(TypedDict, total=False):
+    """A simpler version of the param that only accepts a plain video_url.
+
+    Example:
+    {
+        "video_url": "https://example.com/audio.mp4"
+    }
+    """
+    video_url: Required[str]
+
+
 class VideoURL(TypedDict, total=False):
     url: Required[str]
     """Either a URL of the video or the base64 encoded video data."""
@@ -105,11 +116,10 @@ class ChatCompletionContentPartVideoParam(TypedDict, total=False):
 
 ChatCompletionContentPartParam: TypeAlias = Union[
     OpenAIChatCompletionContentPartParam, ChatCompletionContentPartAudioParam,
-    ChatCompletionContentPartVideoParam,
-    ChatCompletionContentPartRefusalParam,
+    ChatCompletionContentPartVideoParam, ChatCompletionContentPartRefusalParam,
     CustomChatCompletionContentPartParam,
     CustomChatCompletionContentSimpleImageParam,
-    CustomChatCompletionContentSimpleAudioParam, str]
+    CustomChatCompletionContentSimpleVideoParam, str]
 
 
 class CustomChatCompletionMessageParam(TypedDict, total=False):
@@ -319,7 +329,7 @@ class BaseMultiModalContentParser(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def parse_video(self, video_url: str, num_frames) -> None:
+    def parse_video(self, video_url: str) -> None:
         raise NotImplementedError
 
 
@@ -342,8 +352,8 @@ class MultiModalContentParser(BaseMultiModalContentParser):
         placeholder = self._tracker.add("audio", audio)
         self._add_placeholder(placeholder)
 
-    def parse_video(self, video_url: str, num_frames) -> None:
-        video = get_and_parse_video(video_url, num_frames=num_frames)
+    def parse_video(self, video_url: str) -> None:
+        video = get_and_parse_video(video_url)
 
         placeholder = self._tracker.add("video", video)
         self._add_placeholder(placeholder)
@@ -368,8 +378,8 @@ class AsyncMultiModalContentParser(BaseMultiModalContentParser):
         placeholder = self._tracker.add("audio", audio_coro)
         self._add_placeholder(placeholder)
 
-    def parse_video(self, video_url: str, num_frames: int = 8) -> None:
-        video_coro = async_get_and_parse_video(video_url, num_frames)
+    def parse_video(self, video_url: str) -> None:
+        video_coro = async_get_and_parse_video(video_url)
 
         placeholder = self._tracker.add("video", video_coro)
         self._add_placeholder(placeholder)
@@ -517,7 +527,9 @@ def _parse_chat_message_content_mm_part(
         if part.get("video_url") is not None:
             video_params = cast(CustomChatCompletionContentSimpleVideoParam,
                                 part)
-            return "video_url", audio_params.get("video_url", "")        # Raise an error if no 'type' or direct URL is found.
+            return "video_url", video_params.get(
+                "video_url",
+                "")  # Raise an error if no 'type' or direct URL is found.
         raise ValueError("Missing 'type' field in multimodal part.")
 
     if not isinstance(part_type, str):
@@ -605,7 +617,7 @@ def _parse_chat_message_content_part(
     if part_type == "video_url":
         mm_parser.parse_video(content)
         return {'type': 'video'} if wrap_dicts else None
-            
+
     raise NotImplementedError(f"Unknown part type: {part_type}")
 
 
