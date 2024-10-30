@@ -84,8 +84,28 @@ class CustomChatCompletionContentSimpleAudioParam(TypedDict, total=False):
     audio_url: Required[str]
 
 
+class VideoURL(TypedDict, total=False):
+    url: Required[str]
+    """Either a URL of the video or the base64 encoded video data."""
+
+    num_frames: Optional[int]
+    """Specifies the frames of video data.
+
+    Learn more in the
+    [Vision guide](https://platform.openai.com/docs/guides/vision/low-or-high-fidelity-image-understanding).
+    """
+
+
+class ChatCompletionContentPartVideoParam(TypedDict, total=False):
+    video_url: Required[VideoURL]
+
+    type: Required[Literal["video_url"]]
+    """The type of the content part."""
+
+
 ChatCompletionContentPartParam: TypeAlias = Union[
     OpenAIChatCompletionContentPartParam, ChatCompletionContentPartAudioParam,
+    ChatCompletionContentPartVideoParam,
     ChatCompletionContentPartRefusalParam,
     CustomChatCompletionContentPartParam,
     CustomChatCompletionContentSimpleImageParam,
@@ -434,6 +454,7 @@ _TextParser = partial(cast, ChatCompletionContentPartTextParam)
 _ImageParser = partial(cast, ChatCompletionContentPartImageParam)
 _AudioParser = partial(cast, ChatCompletionContentPartAudioParam)
 _RefusalParser = partial(cast, ChatCompletionContentPartRefusalParam)
+_VideoParser = partial(cast, ChatCompletionContentPartVideoParam)
 MODEL_KEEP_MULTI_MODAL_CONTENT = {'mllama'}
 
 # Define a mapping from part types to their corresponding parsing functions.
@@ -446,6 +467,8 @@ MM_PARSER_MAP: Dict[str, Callable[[ChatCompletionContentPartParam], str]] = {
     lambda part: _AudioParser(part).get("audio_url", {}).get("url", ""),
     "refusal":
     lambda part: _RefusalParser(part).get("refusal", ""),
+    "video_url":
+    lambda part: _VideoParser(part).get("video_url", {}).get("url", ""),
 }
 
 
@@ -491,7 +514,10 @@ def _parse_chat_message_content_mm_part(
                                 part)
             return "audio_url", audio_params.get("audio_url", "")
 
-        # Raise an error if no 'type' or direct URL is found.
+        if part.get("video_url") is not None:
+            video_params = cast(CustomChatCompletionContentSimpleVideoParam,
+                                part)
+            return "video_url", audio_params.get("video_url", "")        # Raise an error if no 'type' or direct URL is found.
         raise ValueError("Missing 'type' field in multimodal part.")
 
     if not isinstance(part_type, str):
@@ -500,29 +526,7 @@ def _parse_chat_message_content_mm_part(
 
 
 VALID_MESSAGE_CONTENT_MM_PART_TYPES = ("text", "refusal", "image_url",
-                                       "audio_url")
-
-
-class VideoURL(TypedDict, total=False):
-    url: Required[str]
-    """Either a URL of the image or the base64 encoded image data."""
-
-    num_frames: Optional[int]
-    """Specifies the detail level of the image.
-
-    Learn more in the
-    [Vision guide](https://platform.openai.com/docs/guides/vision/low-or-high-fidelity-image-understanding).
-    """
-
-
-class ChatCompletionContentPartVideoParam(TypedDict, total=False):
-    video_url: Required[VideoURL]
-
-    type: Required[Literal["video_url"]]
-    """The type of the content part."""
-
-
-_VideoParser = partial(cast, ChatCompletionContentPartVideoParam)
+                                       "video_url", "audio_url")
 
 
 def _parse_chat_message_content_parts(
@@ -598,6 +602,10 @@ def _parse_chat_message_content_part(
         mm_parser.parse_audio(content)
         return {'type': 'audio'} if wrap_dicts else None
 
+    if part_type == "video_url":
+        mm_parser.parse_video(content)
+        return {'type': 'video'} if wrap_dicts else None
+            
     raise NotImplementedError(f"Unknown part type: {part_type}")
 
 

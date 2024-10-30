@@ -42,6 +42,10 @@ def _load_video_from_bytes(b: bytes, num_frames: int = 8):
 
     return frames
 
+def _load_video_from_data_url(video_url: str):
+    # Only split once and assume the second part is the base64 encoded image
+    frames_base64 = video_url.split(",")[1:]
+    return [load_image_from_base64(frame_base64) for frame_base64 in frames_base64]
 
 def _load_image_from_data_url(image_url: str):
     # Only split once and assume the second part is the base64 encoded image
@@ -71,14 +75,16 @@ def fetch_image(image_url: str, *, image_mode: str = "RGB") -> Image.Image:
 
 def fetch_video(video_url: str, *, num_frames: int = 8):
     """
-    Asynchronously load a PIL image from a HTTP or base64 data URL.
+    Asynchronously load a video from a HTTP or base64 data URL.
 
-    By default, the image is converted into RGB format.
+    By default, the video is converted into Numpy array.
     """
     if video_url.startswith('http') or video_url.startswith('https'):
         video_raw = global_http_connection.get_bytes(
             video_url, timeout=VLLM_IMAGE_FETCH_TIMEOUT)
-        video = _load_video_from_bytes(video_raw, num_frames=8)
+        video = _load_video_from_bytes(video_raw, num_frames)
+    elif video_url.startswith('data:video'):
+        video = _load_video_from_data_url(video_url)
     else:
         raise ValueError("Invalid 'video_url': A valid 'video_url' must start "
                          "with either 'data:audio' or 'http'.")
@@ -116,10 +122,12 @@ async def async_fetch_video(video_url: str, *, num_frames: int = 8):
     if video_url.startswith('http') or video_url.startswith('https'):
         video_raw = await global_http_connection.async_get_bytes(
             video_url, timeout=VLLM_IMAGE_FETCH_TIMEOUT)
-        video = _load_video_from_bytes(video_raw, num_frames=8)
+        video = _load_video_from_bytes(video_raw, num_frames)
+    elif video_url.startswith('data:video'):
+        video = _load_video_from_data_url(video_url)
     else:
         raise ValueError("Invalid 'video_url': A valid 'video_url' must start "
-                         "with either 'data:audio' or 'http'.")
+                         "with either 'data:video' or 'http'.")
     return video
 
 
