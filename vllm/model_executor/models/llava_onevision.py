@@ -840,10 +840,10 @@ class LlavaOnevisionForConditionalGeneration(nn.Module, SupportsMultiModal,
         # image_feature = nn.functional.interpolate(image_features,
         #                                           size=scaled_shape,
         #                                           mode='bilinear')
-        # image_feature = nn.functional.avg_pool2d(image_features,
-        #                                          kernel_size=stride,
-        #                                          stride=stride)
-        image_feature = nn.functional.avg_pool2d(image_features,stride)
+        image_feature = nn.functional.avg_pool2d(image_features,
+                                                 kernel_size=stride,
+                                                 stride=stride)
+        # image_feature = nn.functional.avg_pool2d(image_features,stride)
 
         image_feature = image_feature.permute(0, 2, 3, 1)
         image_feature = image_feature.view(batch_frames, -1, dim)

@@ -29,20 +29,20 @@ def _load_frame_from_bytes(b: bytes):
     return np.array(frame)
 
 
-def _load_video_from_bytes(b: bytes, num_frames: int = 8):
+def _load_video_from_bytes(b: bytes, num_frames: int = 32):
     video_path = BytesIO(b)
     from decord import VideoReader
 
     vr = VideoReader(video_path, num_threads=1)
     total_frame_num = len(vr)
-    avg_fps = round(vr.get_avg_fps())
-    frame_idx = [i for i in range(0, total_frame_num, avg_fps)]  # FPS Sampling
-    if len(frame_idx) > num_frames:
-        uniform_sampled_frames = np.linspace(0,
-                                             total_frame_num - 1,
-                                             num_frames,
-                                             dtype=int)
+
+    if total_frame_num > num_frames:
+        uniform_sampled_frames = np.linspace(
+            0, total_frame_num - 1, num_frames, dtype=int
+        )
         frame_idx = uniform_sampled_frames.tolist()
+    else:
+        frame_idx = [i for i in range(0, total_frame_num)]
     frames = vr.get_batch(frame_idx).asnumpy()
 
     return frames
@@ -87,7 +87,7 @@ def fetch_image(image_url: str, *, image_mode: str = "RGB") -> Image.Image:
     return image.convert(image_mode)
 
 
-def fetch_video(video_url: str, *, num_frames: int = 16):
+def fetch_video(video_url: str, *, num_frames: int = 32):
     """
     Asynchronously load a video from a HTTP or base64 data URL.
 
@@ -127,7 +127,7 @@ async def async_fetch_image(image_url: str,
     return image.convert(image_mode)
 
 
-async def async_fetch_video(video_url: str, *, num_frames: int = 16):
+async def async_fetch_video(video_url: str, *, num_frames: int = 32):
     """
     Asynchronously load a PIL image from a HTTP or base64 data URL.
 
