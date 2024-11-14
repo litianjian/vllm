@@ -329,7 +329,7 @@ class BaseMultiModalContentParser(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def parse_video(self, video_url: str) -> None:
+    def parse_video(self, video_url: str, num_frames: int) -> None:
         raise NotImplementedError
 
 
@@ -352,8 +352,8 @@ class MultiModalContentParser(BaseMultiModalContentParser):
         placeholder = self._tracker.add("audio", audio)
         self._add_placeholder(placeholder)
 
-    def parse_video(self, video_url: str) -> None:
-        video = get_and_parse_video(video_url)
+    def parse_video(self, video_url: str, num_frames: int) -> None:
+        video = get_and_parse_video(video_url, num_frames)
 
         placeholder = self._tracker.add("video", video)
         self._add_placeholder(placeholder)
@@ -378,8 +378,8 @@ class AsyncMultiModalContentParser(BaseMultiModalContentParser):
         placeholder = self._tracker.add("audio", audio_coro)
         self._add_placeholder(placeholder)
 
-    def parse_video(self, video_url: str) -> None:
-        video_coro = async_get_and_parse_video(video_url)
+    def parse_video(self, video_url: str, num_frames: int) -> None:
+        video_coro = async_get_and_parse_video(video_url, num_frames)
 
         placeholder = self._tracker.add("video", video_coro)
         self._add_placeholder(placeholder)
@@ -615,7 +615,8 @@ def _parse_chat_message_content_part(
         return {'type': 'audio'} if wrap_dicts else None
 
     if part_type == "video_url":
-        mm_parser.parse_video(content)
+        num_frames = part.get("video_url", "").get("frames", 32)
+        mm_parser.parse_video(content, num_frames)
         return {'type': 'video'} if wrap_dicts else None
 
     raise NotImplementedError(f"Unknown part type: {part_type}")

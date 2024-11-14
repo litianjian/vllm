@@ -35,14 +35,13 @@ def _load_video_from_bytes(b: bytes, num_frames: int = 32):
 
     vr = VideoReader(video_path, num_threads=1)
     total_frame_num = len(vr)
-
-    if total_frame_num > num_frames:
+    avg_fps = round(vr.get_avg_fps())
+    frame_idx = [i for i in range(0, total_frame_num, avg_fps)]
+    if len(frame_idx) > num_frames:
         uniform_sampled_frames = np.linspace(
             0, total_frame_num - 1, num_frames, dtype=int
         )
         frame_idx = uniform_sampled_frames.tolist()
-    else:
-        frame_idx = [i for i in range(0, total_frame_num)]
     frames = vr.get_batch(frame_idx).asnumpy()
 
     return frames
@@ -204,8 +203,8 @@ def get_and_parse_image(image_url: str) -> MultiModalDataDict:
     return {"image": image}
 
 
-def get_and_parse_video(video_url: str) -> MultiModalDataDict:
-    video = fetch_video(video_url)
+def get_and_parse_video(video_url: str, num_frames: int) -> MultiModalDataDict:
+    video = fetch_video(video_url, num_frames=num_frames)
     return {"video": video}
 
 
@@ -219,8 +218,8 @@ async def async_get_and_parse_image(image_url: str) -> MultiModalDataDict:
     return {"image": image}
 
 
-async def async_get_and_parse_video(video_url: str) -> MultiModalDataDict:
-    video = await async_fetch_video(video_url)
+async def async_get_and_parse_video(video_url: str, num_frames: int) -> MultiModalDataDict:
+    video = await async_fetch_video(video_url, num_frames=num_frames)
     return {"video": video}
 
 
