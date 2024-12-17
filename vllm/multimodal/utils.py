@@ -1,4 +1,5 @@
 import base64
+import concurrent.futures
 from functools import lru_cache
 from io import BytesIO
 from typing import Any, List, Optional, Tuple, TypeVar, Union
@@ -37,9 +38,10 @@ def _load_video_from_bytes(b: bytes, num_frames: int = 32):
     total_frame_num = len(vr)
 
     if total_frame_num > num_frames:
-        uniform_sampled_frames = np.linspace(
-            0, total_frame_num - 1, num_frames, dtype=int
-        )
+        uniform_sampled_frames = np.linspace(0,
+                                             total_frame_num - 1,
+                                             num_frames,
+                                             dtype=int)
         frame_idx = uniform_sampled_frames.tolist()
     else:
         frame_idx = [i for i in range(0, total_frame_num)]
@@ -51,9 +53,13 @@ def _load_video_from_bytes(b: bytes, num_frames: int = 32):
 def _load_video_from_data_url(video_url: str):
     # Only split once and assume the second part is the base64 encoded image
     frames_base64 = video_url.split(",")[1:]
-    return np.stack([
-        load_frame_from_base64(frame_base64) for frame_base64 in frames_base64
-    ])
+    frames = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        frames = list(executor.map(load_frame_from_base64, frames_base64))
+    return np.stack(frames)
+    # return np.stack([
+    #     load_frame_from_base64(frame_base64) for frame_base64 in frames_base64
+    # ])
 
 
 def load_frame_from_base64(frame: Union[bytes, str]) -> Image.Image:
