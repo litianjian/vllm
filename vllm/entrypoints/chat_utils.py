@@ -629,7 +629,7 @@ _ToolParser = partial(cast, ChatCompletionToolMessageParam)
 def _parse_chat_message_content(
     message: ChatCompletionMessageParam,
     mm_tracker: BaseMultiModalItemTracker,
-    chat_template_text_format: str,
+    chat_template_text_format: str = "",
 ) -> List[ConversationMessage]:
     role = message["role"]
     content = message.get("content")
