@@ -233,8 +233,10 @@ class BaseMultiModalItemTracker(ABC, Generic[_T]):
                         f"<|audio_bos|><|AUDIO|><|audio_eos|>")
             raise TypeError(f"Unknown model type: {model_type}")
         elif modality == "video":
-            if model_type == "qwen2_vl":
+            if model_type == "qwen2_vl" and 'chat_modify' not in hf_config:
                 return "<|vision_start|><|video_pad|><|vision_end|>"
+            if model_type == "qwen2_vl" and 'chat_modify' in hf_config:
+                return "<|video_pad|>"
             if model_type.startswith("llava"):
                 return self._cached_token_str(self._tokenizer,
                                               hf_config.video_token_index)
