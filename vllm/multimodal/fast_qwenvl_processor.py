@@ -132,7 +132,7 @@ def smart_resize(
     return h_bar, w_bar
 
 
-class Qwen2VLImageProcessorFast(BaseImageProcessor):
+class Qwen2VLImageProcessorFastCPU(BaseImageProcessor):
     r"""
     Constructs a Qwen2-VL image processor that dynamically resizes images based on the original images.
 
@@ -311,15 +311,18 @@ class Qwen2VLImageProcessorFast(BaseImageProcessor):
                 image = F.normalize(image.to(dtype=torch.float32),
                             mean=image_mean,
                             std=image_std)
-
             # image = to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format)
             processed_images.append(image)
 
-        patches = np.array(processed_images)
+        # patches = np.array(processed_images)
+        patches = torch.stack(processed_images)
         if data_format == ChannelDimension.LAST:
             patches = patches.transpose(0, 3, 1, 2)
+
+        patches = patches.repeat_interleave(self.temporal_patch_size, dim=0)
+
         if patches.shape[0] == 1:
-            patches = np.tile(patches, (self.temporal_patch_size, 1, 1, 1))
+            patches = patches.repeat_interleave(self.temporal_patch_size, dim=0)
         channel = patches.shape[1]
         grid_t = patches.shape[0] // self.temporal_patch_size
         grid_h, grid_w = resized_height // self.patch_size, resized_width // self.patch_size
@@ -334,7 +337,9 @@ class Qwen2VLImageProcessorFast(BaseImageProcessor):
             self.merge_size,
             self.patch_size,
         )
-        patches = patches.transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
+        # patches = patches.transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
+        patches = patches.permute(0, 3, 6, 4, 7, 2, 1, 5, 8)
+
         flatten_patches = patches.reshape(
             grid_t * grid_h * grid_w, channel * self.temporal_patch_size * self.patch_size * self.patch_size
         )
@@ -454,10 +459,11 @@ class Qwen2VLImageProcessorFast(BaseImageProcessor):
                     do_convert_rgb=do_convert_rgb,
                     input_data_format=input_data_format,
                 )
-                pixel_values.extend(patches)
+                pixel_values.append(patches)
                 vision_grid_thws.append(image_grid_thw)
-            pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
+            pixel_values = torch.cat(pixel_values, dim=0)
+
             data = {"pixel_values": pixel_values, "image_grid_thw": vision_grid_thws}
 
         if videos is not None:
@@ -476,13 +482,12 @@ class Qwen2VLImageProcessorFast(BaseImageProcessor):
                     do_convert_rgb=do_convert_rgb,
                     input_data_format=input_data_format,
                 )
-                pixel_values.extend(patches)
+                pixel_values.append(patches)
                 vision_grid_thws.append(video_grid_thw)
-            pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
+            pixel_values = torch.cat(pixel_values,dim=0)
             data = {"pixel_values_videos": pixel_values, "video_grid_thw": vision_grid_thws}
-
-        return BatchFeature(data=data, tensor_type=return_tensors)
+        return BatchFeature(data=data, tensor_type=None)
 
 
 class Qwen2VLImageProcessorGPU(BaseImageProcessor):
@@ -673,6 +678,8 @@ class Qwen2VLImageProcessorGPU(BaseImageProcessor):
             patches = patches.transpose(0, 3, 1, 2)
 
         patches = patches.repeat_interleave(self.temporal_patch_size, dim=0)
+        if patches.shape[0] == 1:
+            patches = patches.repeat_interleave(self.temporal_patch_size, dim=0)
 
         channel = patches.shape[1]
         grid_t = patches.shape[0] // self.temporal_patch_size
@@ -813,7 +820,7 @@ class Qwen2VLImageProcessorGPU(BaseImageProcessor):
                 )
                 pixel_values.extend(patches)
                 vision_grid_thws.append(image_grid_thw)
-            torch.stack(pixel_values)
+            pixel_values = torch.stack(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
             data = {"pixel_values": pixel_values, "image_grid_thw": vision_grid_thws}
 
@@ -833,17 +840,16 @@ class Qwen2VLImageProcessorGPU(BaseImageProcessor):
                     do_convert_rgb=do_convert_rgb,
                     input_data_format=input_data_format,
                 )
-                pixel_values.extend(patches)
+                pixel_values.append(patches)
                 vision_grid_thws.append(video_grid_thw)
-            # pixel_values = np.array(pixel_values)
-            torch.stack(pixel_values)
+            pixel_values = torch.cat(pixel_values,)
             vision_grid_thws = np.array(vision_grid_thws)
             data = {"pixel_values_videos": pixel_values, "video_grid_thw": vision_grid_thws}
 
         return BatchFeature(data=data, tensor_type=None)
 
 
-AutoImageProcessor.register("Qwen2VLImageProcessorFast",
-                            Qwen2VLImageProcessorFast)
+AutoImageProcessor.register("Qwen2VLImageProcessorFastCPU",
+                            Qwen2VLImageProcessorFastCPU)
 AutoImageProcessor.register("Qwen2VLImageProcessorGPU",
                             Qwen2VLImageProcessorGPU)
