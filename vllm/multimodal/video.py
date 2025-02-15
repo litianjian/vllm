@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import base64
+import concurrent.futures
 from functools import lru_cache, partial
 from io import BytesIO
 from pathlib import Path
@@ -139,28 +140,37 @@ class VideoMediaIO(MediaIO[npt.NDArray]):
         total_frame_num = len(vr)
 
         num_frames = self.num_frames
-        if total_frame_num > num_frames:
+        avg_fps = round(vr.get_avg_fps())
+        frame_idx = [i for i in range(0, total_frame_num, avg_fps)]
+
+        if len(frame_idx) > num_frames:
             uniform_sampled_frames = np.linspace(0,
                                                  total_frame_num - 1,
                                                  num_frames,
                                                  dtype=int)
             frame_idx = uniform_sampled_frames.tolist()
-        else:
-            frame_idx = list(range(0, total_frame_num))
 
         return vr.get_batch(frame_idx).asnumpy()
 
     def load_base64(self, media_type: str, data: str) -> npt.NDArray:
-        if media_type.lower() == "video/jpeg":
+        media_type_map = {
+            "video/jpeg": "image/jpeg",
+            "video/png": "image/png",
+        }
+        media_type_key = media_type.lower()
+        mime_type = media_type_map.get(media_type_key)
+
+        if mime_type:
             load_frame = partial(
                 self.image_io.load_base64,
-                "image/jpeg",
+                mime_type,
             )
+            frames_base64 = data.split(",")
+            frames = []
 
-            return np.stack([
-                np.array(load_frame(frame_data))
-                for frame_data in data.split(",")
-            ])
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                frames = list(executor.map(load_frame, frames_base64))
+            return np.stack(frames)
 
         return self.load_bytes(base64.b64decode(data))
 
