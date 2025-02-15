@@ -13,6 +13,7 @@ from transformers.models.llava_onevision.modeling_llava_onevision import (
     get_anyres_image_grid_shape, unpad_image)
 from typing_extensions import NotRequired
 
+import vllm.multimodal.fast_processor # noqa: F401
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
 from vllm.model_executor.layers.activation import get_act_fn
