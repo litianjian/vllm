@@ -136,7 +136,7 @@ class VideoMediaIO(MediaIO[npt.NDArray]):
         self.num_frames = num_frames
 
     def load_bytes(self, data: bytes) -> npt.NDArray:
-        vr = decord.VideoReader(BytesIO(data), num_threads=1)
+        vr = decord.VideoReader(BytesIO(data), num_threads=8)
         total_frame_num = len(vr)
 
         num_frames = self.num_frames
