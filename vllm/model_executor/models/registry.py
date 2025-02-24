@@ -136,6 +136,7 @@ _EMBEDDING_MODELS = {
     "LlavaNextForConditionalGeneration": ("llava_next", "LlavaNextForConditionalGeneration"),  # noqa: E501
     "Phi3VForCausalLM": ("phi3v", "Phi3VForCausalLM"),
     "Qwen2VLForConditionalGeneration": ("qwen2_vl", "Qwen2VLForConditionalGeneration"),  # noqa: E501
+    "TTVFMForConditionalGeneration": ("ttvfm", "TTVFMForConditionalGeneration"),  # noqa: E501
     # [Auto-converted (see adapters.py)]
     "Qwen2ForSequenceClassification": ("qwen2", "Qwen2ForCausalLM"),
     # Technically PrithviGeoSpatialMAE is a model that works on images, both in
@@ -179,6 +180,7 @@ _MULTIMODAL_MODELS = {
     "Qwen2VLForConditionalGeneration": ("qwen2_vl", "Qwen2VLForConditionalGeneration"),  # noqa: E501
     "Qwen2_5_VLForConditionalGeneration": ("qwen2_5_vl", "Qwen2_5_VLForConditionalGeneration"),  # noqa: E501
     "Qwen2AudioForConditionalGeneration": ("qwen2_audio", "Qwen2AudioForConditionalGeneration"),  # noqa: E501
+    "TTVFMForConditionalGeneration": ("ttvfm", "TTVFMForConditionalGeneration"),  # noqa: E501
     "UltravoxModel": ("ultravox", "UltravoxModel"),
     # [Encoder-decoder]
     "MllamaForConditionalGeneration": ("mllama", "MllamaForConditionalGeneration"),  # noqa: E501

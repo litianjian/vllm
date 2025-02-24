@@ -13,6 +13,7 @@ from transformers.models.llava_onevision.modeling_llava_onevision import (
     get_anyres_image_grid_shape, unpad_image)
 from typing_extensions import NotRequired
 
+import vllm.multimodal.fast_processor # noqa: F401
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
 from vllm.model_executor.layers.activation import get_act_fn
@@ -166,9 +167,19 @@ class LlavaOnevisionProcessingInfo(LlavaNextProcessingInfo):
 
         vision_encoder_info = self.get_vision_encoder_info()
         patch_grid_length = vision_encoder_info.get_patch_grid_length()
-        pooled_grid_length = math.ceil(patch_grid_length / spatial_pool_stride)
+        pooled_grid_length = (patch_grid_length // spatial_pool_stride)
 
         return pooled_grid_length * pooled_grid_length
+
+    def _get_num_frame_newline_tokens(self, ):
+        hf_config = self.get_hf_config()
+        spatial_pool_stride = getattr(hf_config, "spatial_pool_stride", 2)
+
+        vision_encoder_info = self.get_vision_encoder_info()
+        patch_grid_length = vision_encoder_info.get_patch_grid_length()
+        pooled_grid_length = (patch_grid_length // spatial_pool_stride)
+
+        return pooled_grid_length
 
     def get_num_video_tokens(
         self,
@@ -182,8 +193,8 @@ class LlavaOnevisionProcessingInfo(LlavaNextProcessingInfo):
             image_height=image_height,
         )
 
-        return num_frame_tokens * num_frames + 1  # Newline token
-
+        newline_tokens = self._get_num_frame_newline_tokens()
+        return num_frame_tokens * num_frames + newline_tokens * num_frames
     def _get_max_video_frames(self, max_tokens: int) -> int:
         target_width, target_height = self.get_image_size_with_most_features()
 
@@ -779,12 +790,25 @@ class LlavaOnevisionForConditionalGeneration(nn.Module, SupportsMultiModal,
         frames: int = 1,
         strategy: str = "one_token",
     ) -> torch.Tensor:
-        if strategy == "one_token":
+        if strategy == "one_token1":
             video_features = video_features.reshape(
                 videos, frames * video_features.shape[1], -1)
             image_newline = self.image_newline[None, None, :].repeat(
                 videos, 1, 1).to(video_features.device)
             video_features = torch.cat((video_features, image_newline), dim=1)
+            return video_features
+        elif strategy == "one_token":
+            resize_height = int(math.sqrt(video_features.shape[1]))
+            video_features = video_features.reshape(videos, frames, 1,
+                                                    resize_height,
+                                                    resize_height, -1)
+            video_features = video_features.permute(5, 0, 1, 3, 2,
+                                                    4).contiguous()
+            video_features = video_features.flatten(2, 3).flatten(3, 4)
+            image_newline = self.image_newline[:, None, None, None].repeat(
+                1, *video_features.shape[1:-1], 1)
+            video_features = torch.cat((video_features, image_newline), dim=-1)
+            video_features = video_features.flatten(2, 3).permute(1, 2, 0)
             return video_features
         raise ValueError(f"Unexpected video newline strategy: {strategy}")
 
@@ -845,11 +869,14 @@ class LlavaOnevisionForConditionalGeneration(nn.Module, SupportsMultiModal,
         image_features = image_features.permute(0, 3, 1, 2)
 
         # TODO support other pooling types config
-        height, width = image_features.shape[2:]
-        scaled_shape = [math.ceil(height / stride), math.ceil(width / stride)]
-        image_feature = nn.functional.interpolate(image_features,
-                                                  size=scaled_shape,
-                                                  mode='bilinear')
+        # height, width = image_features.shape[2:]
+        # scaled_shape = [math.ceil(height / stride), math.ceil(width / stride)]
+        # image_feature = nn.functional.interpolate(image_features,
+        #                                           size=scaled_shape,
+        #                                           mode='bilinear')
+        image_feature = nn.functional.avg_pool2d(image_features,
+                                                 kernel_size=stride,
+                                                 stride=stride)
         image_feature = image_feature.permute(0, 2, 3, 1)
         image_feature = image_feature.view(batch_frames, -1, dim)
         return image_feature
