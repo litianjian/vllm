@@ -1409,9 +1409,9 @@ class AsyncEngineArgs(EngineArgs):
         # Initialize plugin to update the parser, for example, The plugin may
         # adding a new kind of quantization method to --quantization argument or
         # a new device to --device argument.
-        load_general_plugins()
-        from vllm.platforms import current_platform
-        current_platform.pre_register_and_update(parser)
+        # load_general_plugins()
+        # from vllm.platforms import current_platform
+        # current_platform.pre_register_and_update(parser)
         return parser
 
 
