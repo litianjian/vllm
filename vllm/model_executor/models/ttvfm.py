@@ -34,7 +34,7 @@ from transformers.models.qwen2_vl.configuration_qwen2_vl import (
     Qwen2VLConfig, Qwen2VLVisionConfig)
 from transformers.models.qwen2_vl.image_processing_qwen2_vl import smart_resize
 
-import vllm.multimodal.fast_processor  # noqa: F401
+import vllm.multimodal.fast_qwenvl_processor  # noqa: F401
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
 from vllm.distributed import parallel_state, tensor_model_parallel_all_gather
@@ -925,7 +925,7 @@ class Qwen2VLDummyInputsBuilder(BaseDummyInputsBuilder[Qwen2VLProcessingInfo]):
             self.info.get_num_frames_with_most_features(seq_len)
 
         # NOTE: video frames will be repeated in ttvfm
-        video_frame_repeat = 2
+        video_frame_repeat = 1
 
         mm_data = {
             "image":

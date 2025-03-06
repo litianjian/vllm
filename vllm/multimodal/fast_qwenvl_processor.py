@@ -456,7 +456,7 @@ class Qwen2VLImageProcessorFastCPU(BaseImageProcessor):
                 )
                 pixel_values.append(patches)
                 vision_grid_thws.append(image_grid_thw)
-            vision_grid_thws = np.array(vision_grid_thws)
+            vision_grid_thws = torch.tensor(vision_grid_thws)
             pixel_values = torch.cat(pixel_values, dim=0)
 
             data = {
@@ -482,7 +482,7 @@ class Qwen2VLImageProcessorFastCPU(BaseImageProcessor):
                 )
                 pixel_values.append(patches)
                 vision_grid_thws.append(video_grid_thw)
-            vision_grid_thws = np.array(vision_grid_thws)
+            vision_grid_thws = torch.tensor(vision_grid_thws)
             pixel_values = torch.cat(pixel_values, dim=0)
             data = {
                 "pixel_values_videos": pixel_values,
@@ -828,7 +828,7 @@ class Qwen2VLImageProcessorGPU(BaseImageProcessor):
                 pixel_values.extend(patches)
                 vision_grid_thws.append(image_grid_thw)
             pixel_values = torch.stack(pixel_values)
-            vision_grid_thws = np.array(vision_grid_thws)
+            vision_grid_thws = torch.tensor(vision_grid_thws)
             data = {
                 "pixel_values": pixel_values,
                 "image_grid_thw": vision_grid_thws
@@ -853,7 +853,7 @@ class Qwen2VLImageProcessorGPU(BaseImageProcessor):
                 pixel_values.append(patches)
                 vision_grid_thws.append(video_grid_thw)
             pixel_values = torch.cat(pixel_values, )
-            vision_grid_thws = np.array(vision_grid_thws)
+            vision_grid_thws = torch.tensor(vision_grid_thws)
             data = {
                 "pixel_values_videos": pixel_values,
                 "video_grid_thw": vision_grid_thws
