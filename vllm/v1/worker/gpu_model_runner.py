@@ -26,6 +26,7 @@ from vllm.compilation.cuda_graph import CUDAGraphWrapper
 from vllm.compilation.monitor import set_cudagraph_capturing_enabled
 from vllm.config import (CompilationLevel, CUDAGraphMode, VllmConfig,
                          get_layers_from_vllm_config, update_config)
+from vllm.distributed import get_tensor_model_parallel_rank
 from vllm.distributed.eplb.eplb_state import EplbState
 from vllm.distributed.kv_transfer import (get_kv_transfer_group,
                                           has_kv_transfer_group)
@@ -38,6 +39,9 @@ from vllm.forward_context import (BatchDescriptor, DPMetadata,
 from vllm.logger import init_logger
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.mamba.abstract import MambaBase
+from vllm.model_executor.layers.fused_moe.routed_experts_capturer import (
+    RoutedExpertsCapturer,
+)
 from vllm.model_executor.layers.rotary_embedding import MRotaryEmbedding
 from vllm.model_executor.model_loader import TensorizerLoader, get_model_loader
 from vllm.model_executor.models.deepseek_v2 import DeepseekV32IndexerCache
@@ -1215,6 +1219,10 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                 blk_table_tensor = blk_table.get_device_tensor(num_reqs)
                 slot_mapping = blk_table.slot_mapping.gpu[:
                                                           total_num_scheduled_tokens]
+                
+                if self.model_config.enable_return_routed_experts:
+                    assert len(self.kv_cache_config.kv_cache_groups) == 1
+                    self.slot_mapping = slot_mapping.cpu().numpy()
 
                 # Fill unused with -1. Needed for reshape_and_cache in full cuda
                 # graph mode.
@@ -2325,6 +2333,9 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         scheduler_output: "SchedulerOutput",
         intermediate_tensors: Optional[IntermediateTensors] = None,
     ) -> Union[ModelRunnerOutput, AsyncModelRunnerOutput, IntermediateTensors]:
+        
+        RoutedExpertsCapturer.get_instance().clear_buffer()
+
         with record_function_or_nullcontext("Preprocess"):
             with self.synchronize_input_prep():
                 # Update persistent batch states.
@@ -2524,7 +2535,13 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
 
         with record_function_or_nullcontext("EPLB"):
             self.eplb_step()
-
+        if (
+            self.model_config.enable_return_routed_experts
+            and get_tensor_model_parallel_rank() == 0
+        ):
+            RoutedExpertsCapturer.get_instance().save_captured_experts(
+                indices=self.slot_mapping
+            )
         output = ModelRunnerOutput(
             req_ids=req_ids_output_copy,
             req_id_to_index=req_id_to_index_output_copy,
@@ -4119,6 +4136,29 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                     " the softmax lse for decode, but the impl "
                     f"{layer.impl.__class__.__name__} "
                     "does not return the softmax lse for decode.")
+
+        self.init_routed_experts_capturer()
+
+    def init_routed_experts_capturer(self):
+        logger.info(
+            "Initializing routed experts capturer, enable_return_routed_experts: %s",
+            self.model_config.enable_return_routed_experts,
+        )
+        routed_experts_capturer = RoutedExpertsCapturer.create(
+            self.model_config.enable_return_routed_experts
+        )
+        block_size = self.cache_config.block_size
+        self.max_num_kv_tokens = (
+            self.kv_cache_config.num_blocks // len(self.kv_cache_config.kv_cache_groups)
+            + 1
+        ) * block_size
+        routed_experts_capturer.init_buffer(
+            max_num_batched_tokens=self.scheduler_config.max_num_batched_tokens,
+            max_num_kv_tokens=self.max_num_kv_tokens,
+            model_config=self.model_config,
+            instance_id=self.vllm_config.instance_id,
+            enable_shared_memory=get_tensor_model_parallel_rank() == 0,
+        )
 
     def may_add_encoder_only_layers_to_kv_cache_config(self) -> None:
         """

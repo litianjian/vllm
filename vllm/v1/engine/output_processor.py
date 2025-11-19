@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Optional, Union, cast
 
+import numpy as np
 import torch
 
 from vllm.outputs import (CompletionOutput, PoolingOutput,
@@ -188,6 +189,7 @@ class RequestState:
         finish_reason: Optional[FinishReason],
         stop_reason: Union[int, str, None],
         kv_transfer_params: Optional[dict[str, Any]] = None,
+        routed_experts: np.ndarray | None = None,
     ) -> Optional[Union[RequestOutput, PoolingRequestOutput]]:
 
         finished = finish_reason is not None
@@ -204,7 +206,7 @@ class RequestState:
                 finished)
 
         output = self._new_completion_output(new_token_ids, finish_reason,
-                                             stop_reason)
+                                             stop_reason, routed_experts)
 
         if self.parent_req is None:
             outputs = [output]
@@ -264,6 +266,7 @@ class RequestState:
         token_ids: list[int],
         finish_reason: Optional[FinishReason],
         stop_reason: Union[int, str, None],
+        routed_experts: np.ndarray | None = None,
     ) -> CompletionOutput:
 
         assert self.detokenizer is not None
@@ -285,6 +288,7 @@ class RequestState:
             index=self.request_index,
             text=text,
             token_ids=token_ids,
+            routed_experts=routed_experts,
             logprobs=logprobs,
             cumulative_logprob=self.logprobs_processor.cumulative_logprob,
             finish_reason=str(finish_reason) if finished else None,
@@ -425,6 +429,7 @@ class OutputProcessor:
             finish_reason = engine_core_output.finish_reason
             stop_reason = engine_core_output.stop_reason
             kv_transfer_params = engine_core_output.kv_transfer_params
+            routed_experts = engine_core_output.routed_experts
             req_state.num_cached_tokens = engine_core_output.num_cached_tokens
             req_state.is_prefilling = False
 
@@ -446,7 +451,7 @@ class OutputProcessor:
             # 4) Create and handle RequestOutput objects.
             if request_output := req_state.make_request_output(
                     new_token_ids, pooling_output, finish_reason, stop_reason,
-                    kv_transfer_params):
+                    kv_transfer_params, routed_experts):
                 if req_state.queue is not None:
                     # AsyncLLM: put into queue for handling by generate().
                     req_state.queue.put(request_output)

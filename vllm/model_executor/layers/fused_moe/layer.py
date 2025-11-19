@@ -27,6 +27,9 @@ from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEQuantConfig, biased_moe_quant_config)
 from vllm.model_executor.layers.fused_moe.fused_moe import (
     zero_experts_compute_triton)
+from vllm.model_executor.layers.fused_moe.routed_experts_capturer import (
+    RoutedExpertsCapturer,
+)
 # yapf: enable
 from vllm.model_executor.layers.fused_moe.modular_kernel import (
     FusedMoEActivationFormat, FusedMoEModularKernel,
@@ -553,6 +556,7 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
 
         zero_expert_num = getattr(layer, 'zero_expert_num', 0)
         zero_expert_type = getattr(layer, 'zero_expert_type', None)
+        layer_id = getattr(layer, 'layer_id', 0)
 
         topk_weights, topk_ids, zero_expert_result = FusedMoE.select_experts(
             hidden_states=x,
@@ -574,7 +578,9 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
             logical_replica_count=logical_replica_count,
             global_num_experts=global_num_experts,
             zero_expert_num=zero_expert_num,
-            zero_expert_type=zero_expert_type)
+            zero_expert_type=zero_expert_type,
+            layer_id=layer_id,
+            )
 
         if self.rocm_aiter_moe_enabled:
             assert self.fused_experts is None
@@ -960,6 +966,7 @@ class FusedMoE(CustomOp):
         is_sequence_parallel=False,
         zero_expert_num: Optional[int] = 0,
         zero_expert_type: Optional[str] = None,
+        layer_id: Optional[int] = None,
     ):
         super().__init__()
         if params_dtype is None:
@@ -1007,6 +1014,10 @@ class FusedMoE(CustomOp):
             raise ValueError("Duplicate layer name: {}".format(prefix))
         compilation_config.static_forward_context[prefix] = self
         self.layer_name = prefix
+        
+        from vllm.model_executor.models.utils import extract_layer_index
+        
+        self.layer_id = extract_layer_index(self.layer_name)
 
         self.enable_eplb = enable_eplb
         self.expert_load_view: Optional[torch.Tensor] = None
@@ -1175,6 +1186,10 @@ class FusedMoE(CustomOp):
     def shared_experts(self) -> Optional[torch.nn.Module]:
         return None
 
+    @property
+    def get_layer_id(self):
+        return self.layer_id
+    
     @property
     def tp_size(self):
         return self.moe_parallel_config.tp_size
@@ -1678,6 +1693,7 @@ class FusedMoE(CustomOp):
         global_num_experts: Optional[int] = None,
         zero_expert_num: Optional[int] = None,
         zero_expert_type: Optional[str] = None,
+        layer_id: Optional[int] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Route the input hidden states to the top-k experts based on the
@@ -1776,6 +1792,14 @@ class FusedMoE(CustomOp):
             )
         else:
             zero_expert_result = None
+        
+        capturer = RoutedExpertsCapturer.get_instance()
+        if capturer is not None:
+            capturer.capture(
+                layer_id=layer_id,
+                topk_ids=topk_ids,
+            )
+
         return topk_weights, topk_ids, zero_expert_result
 
     def must_reduce_shared_expert_outputs(self) -> bool:
